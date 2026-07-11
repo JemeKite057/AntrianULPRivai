@@ -15,7 +15,7 @@ st.set_page_config(
 
 ANTRIAN_FILE = "antrian.csv"
 SURVEY_LINK  = "https://forms.gle/5yL8gq9TVgp2u9138"
-KOLOM        = ["nomor","nama","jenis_layanan","tanggal","waktu_daftar","status"]
+KOLOM        = ["nomor","nama","jenis_layanan","tanggal","waktu_daftar","waktu_selesai","status"]
 
 DAFTAR_LAYANAN = [
     "Permohonan Pasang Baru",
@@ -42,7 +42,6 @@ html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
 
 h1,h2,h3 {{ color: #0a3d91 !important; font-weight: 600 !important; }}
 
-/* tab styling */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {{
     background: #e8eef8;
     border-radius: 10px;
@@ -61,7 +60,6 @@ h1,h2,h3 {{ color: #0a3d91 !important; font-weight: 600 !important; }}
     color: white !important;
 }}
 
-/* metric cards */
 [data-testid="stMetric"] {{
     background: white;
     border: 1px solid #dce6f5;
@@ -72,7 +70,6 @@ h1,h2,h3 {{ color: #0a3d91 !important; font-weight: 600 !important; }}
 [data-testid="stMetricValue"] {{ font-size:28px !important; font-weight:700 !important; color:#0a3d91 !important; }}
 [data-testid="stMetricLabel"] {{ font-size:12px !important; color:#64748b !important; font-weight:500 !important; }}
 
-/* buttons */
 .stFormSubmitButton > button {{
     background: #0a3d91 !important;
     color: white !important;
@@ -98,10 +95,7 @@ h1,h2,h3 {{ color: #0a3d91 !important; font-weight: 600 !important; }}
     font-weight: 600 !important;
 }}
 
-/* input */
 input, select {{ border-radius: 8px !important; }}
-
-/* dataframe */
 [data-testid="stDataFrame"] {{ border-radius: 10px !important; border: 1px solid #dce6f5 !important; }}
 </style>
 """, unsafe_allow_html=True)
@@ -111,7 +105,11 @@ input, select {{ border-radius: 8px !important; }}
 # ============================================================
 def load_antrian():
     if os.path.exists(ANTRIAN_FILE):
-        return pd.read_csv(ANTRIAN_FILE)
+        df = pd.read_csv(ANTRIAN_FILE)
+        # Pastikan kolom waktu_selesai ada (kompatibilitas data lama)
+        if "waktu_selesai" not in df.columns:
+            df["waktu_selesai"] = ""
+        return df
     return pd.DataFrame(columns=KOLOM)
 
 def save_antrian(df):
@@ -139,6 +137,7 @@ def tambah_antrian(nama, jenis_layanan):
         "jenis_layanan": jenis_layanan,
         "tanggal": str(date.today()),
         "waktu_daftar": datetime.now().strftime("%H:%M"),
+        "waktu_selesai": "",
         "status": "Menunggu"
     }])
     df = pd.concat([df, baris], ignore_index=True)
@@ -147,7 +146,10 @@ def tambah_antrian(nama, jenis_layanan):
 
 def update_status(nomor, status_baru):
     df = load_antrian()
-    df.loc[(df["nomor"] == nomor) & (df["tanggal"] == str(date.today())), "status"] = status_baru
+    mask = (df["nomor"] == nomor) & (df["tanggal"] == str(date.today()))
+    df.loc[mask, "status"] = status_baru
+    if status_baru == "Selesai":
+        df.loc[mask, "waktu_selesai"] = datetime.now().strftime("%H:%M")
     save_antrian(df)
 
 def get_antrian_aktif():
@@ -172,7 +174,7 @@ if "form_key" not in st.session_state:
     st.session_state["form_key"] = 0
 
 # ============================================================
-# HEADER — LOGO + JUDUL
+# HEADER
 # ============================================================
 st.markdown(f"""
 <div style="background:#0a3d91; border-radius:0 0 16px 16px; padding:16px 28px;
@@ -243,7 +245,6 @@ with tab_pelanggan:
             (df_hari["nomor"] <= nomor)
         ].shape[0]
 
-        # Kartu tiket
         st.markdown(f"""
         <div style="background:#0a3d91; border-radius:16px; padding:28px; text-align:center; margin:10px 0 16px 0;
              box-shadow: 0 4px 16px rgba(10,61,145,0.2);">
@@ -269,8 +270,7 @@ with tab_pelanggan:
         elif status_saat_ini == "Dipanggil":
             st.markdown("""
             <div style="background:#e8f5e9; border:1px solid #4caf50; border-radius:10px;
-                 padding:14px 18px; text-align:center; margin-bottom:12px;
-                 animation: pulse 1s infinite;">
+                 padding:14px 18px; text-align:center; margin-bottom:12px;">
                 <span style="font-size:20px;">🔔</span>
                 <span style="font-size:15px; color:#1b5e20; font-weight:600; margin-left:8px;">
                     Anda dipanggil! Silakan menuju loket pelayanan.
@@ -299,7 +299,6 @@ with tab_pelanggan:
 
         st.markdown("---")
 
-        # Tombol ambil antrian baru — reset form dan tiket
         col_refresh, col_baru = st.columns(2)
         with col_refresh:
             if st.button("Perbarui Status", use_container_width=True):
@@ -345,11 +344,11 @@ with tab_pelanggan:
 with tab_petugas:
     st.subheader("Panel Petugas")
 
-    df_hari   = get_hari_ini()
-    total     = len(df_hari)
-    menunggu  = len(df_hari[df_hari["status"] == "Menunggu"]) if not df_hari.empty else 0
-    selesai   = len(df_hari[df_hari["status"] == "Selesai"])  if not df_hari.empty else 0
-    dilayani  = get_sedang_dilayani()
+    df_hari  = get_hari_ini()
+    total    = len(df_hari)
+    menunggu = len(df_hari[df_hari["status"] == "Menunggu"]) if not df_hari.empty else 0
+    selesai  = len(df_hari[df_hari["status"] == "Selesai"])  if not df_hari.empty else 0
+    dilayani = get_sedang_dilayani()
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Antrian Hari Ini", total)
@@ -371,13 +370,15 @@ with tab_petugas:
             <div>
                 <div style="font-size:17px; font-weight:600; color:#1b5e20;">{dilayani['nama']}</div>
                 <div style="font-size:13px; color:#388e3c; margin-top:2px;">{dilayani['jenis_layanan']}</div>
-                <div style="font-size:11px; color:#81c784; margin-top:2px;">Daftar: {dilayani['waktu_daftar']}</div>
+                <div style="font-size:11px; color:#388e3c; margin-top:4px;">
+                    ⏰ Jam Daftar: <b>{dilayani['waktu_daftar']}</b>
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         if st.button("Tandai Selesai", type="primary", use_container_width=True):
             update_status(dilayani["nomor"], "Selesai")
-            st.success(f"{dilayani['nomor']} — {dilayani['nama']} selesai dilayani.")
+            st.success(f"{dilayani['nomor']} — {dilayani['nama']} selesai dilayani pukul {datetime.now().strftime('%H:%M')}.")
             st.rerun()
     else:
         st.info("Tidak ada pelanggan yang sedang dilayani.")
@@ -402,7 +403,9 @@ with tab_petugas:
                     </div>
                     <div>
                         <div style="font-size:14px; font-weight:500; color:#1e3a6e;">{row['nama']}</div>
-                        <div style="font-size:12px; color:#64748b; margin-top:2px;">{row['jenis_layanan']} &nbsp;·&nbsp; {row['waktu_daftar']}</div>
+                        <div style="font-size:12px; color:#64748b; margin-top:2px;">
+                            {row['jenis_layanan']} &nbsp;·&nbsp; ⏰ Daftar: {row['waktu_daftar']}
+                        </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -418,10 +421,12 @@ with tab_petugas:
     if df_hari.empty:
         st.caption("Belum ada data antrian hari ini.")
     else:
-        st.dataframe(
-            df_hari[["nomor","nama","jenis_layanan","waktu_daftar","status"]],
-            use_container_width=True, hide_index=True
-        )
+        # Tampilkan tabel dengan jam daftar dan jam selesai
+        df_tampil = df_hari[["nomor","nama","jenis_layanan","waktu_daftar","waktu_selesai","status"]].copy()
+        df_tampil.columns = ["Nomor","Nama","Keperluan","Jam Daftar","Jam Selesai","Status"]
+        df_tampil["Jam Selesai"] = df_tampil["Jam Selesai"].fillna("").replace("", "-")
+        st.dataframe(df_tampil, use_container_width=True, hide_index=True)
+
         csv = df_hari.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
             "Download Rekap Hari Ini (CSV)", data=csv,
