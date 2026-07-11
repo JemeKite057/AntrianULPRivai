@@ -146,6 +146,7 @@ def tambah_antrian(nama, jenis_layanan):
 
 def update_status(nomor, status_baru):
     df = load_antrian()
+    df["waktu_selesai"] = df["waktu_selesai"].astype(str).replace("nan", "")
     mask = (df["nomor"] == nomor) & (df["tanggal"] == str(date.today()))
     df.loc[mask, "status"] = status_baru
     if status_baru == "Selesai":
