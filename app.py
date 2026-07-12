@@ -1,7 +1,10 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
+
+def jam_wib():
+    return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=7)))
 from logo import LOGO_PLN_B64
 
 # ============================================================
@@ -115,11 +118,14 @@ def load_antrian():
 def save_antrian(df):
     df.to_csv(ANTRIAN_FILE, index=False)
 
+def tanggal_wib():
+    return jam_wib().strftime("%Y-%m-%d")
+
 def get_hari_ini():
     df = load_antrian()
     if df.empty:
         return df
-    return df[df["tanggal"] == str(date.today())]
+    return df[df["tanggal"] == tanggal_wib()]
 
 def nomor_berikutnya():
     df = get_hari_ini()
@@ -135,8 +141,8 @@ def tambah_antrian(nama, jenis_layanan):
         "nomor": nomor,
         "nama": nama,
         "jenis_layanan": jenis_layanan,
-        "tanggal": str(date.today()),
-        "waktu_daftar": datetime.now().strftime("%H:%M"),
+        "tanggal": tanggal_wib(),
+        "waktu_daftar": jam_wib().strftime("%H:%M"),
         "waktu_selesai": "",
         "status": "Menunggu"
     }])
@@ -147,10 +153,10 @@ def tambah_antrian(nama, jenis_layanan):
 def update_status(nomor, status_baru):
     df = load_antrian()
     df["waktu_selesai"] = df["waktu_selesai"].astype(str).replace("nan", "")
-    mask = (df["nomor"] == nomor) & (df["tanggal"] == str(date.today()))
+    mask = (df["nomor"] == nomor) & (df["tanggal"] == tanggal_wib())
     df.loc[mask, "status"] = status_baru
     if status_baru == "Selesai":
-        df.loc[mask, "waktu_selesai"] = datetime.now().strftime("%H:%M")
+        df.loc[mask, "waktu_selesai"] = jam_wib().strftime("%H:%M")
     save_antrian(df)
 
 def get_antrian_aktif():
@@ -196,7 +202,7 @@ st.markdown(f"""
   <div style="text-align:right;">
     <div style="background:#FFC72C; border-radius:8px; padding:6px 14px;
          font-size:12px; font-weight:600; color:#0a3d91; display:inline-block;">
-      {date.today().strftime("%A, %d %B %Y")}
+      {jam_wib().strftime("%A, %d %B %Y")}
     </div>
   </div>
 </div>
@@ -379,7 +385,7 @@ with tab_petugas:
         """, unsafe_allow_html=True)
         if st.button("Tandai Selesai", type="primary", use_container_width=True):
             update_status(dilayani["nomor"], "Selesai")
-            st.success(f"{dilayani['nomor']} — {dilayani['nama']} selesai dilayani pukul {datetime.now().strftime('%H:%M')}.")
+            st.success(f"{dilayani['nomor']} — {dilayani['nama']} selesai dilayani pukul {jam_wib().strftime('%H:%M')} WIB.")
             st.rerun()
     else:
         st.info("Tidak ada pelanggan yang sedang dilayani.")
@@ -431,7 +437,7 @@ with tab_petugas:
         csv = df_hari.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
             "Download Rekap Hari Ini (CSV)", data=csv,
-            file_name=f"antrian_{date.today()}.csv", mime="text/csv"
+            file_name=f"antrian_{tanggal_wib()}.csv", mime="text/csv"
         )
 
     if st.button("Perbarui Data", use_container_width=True):
